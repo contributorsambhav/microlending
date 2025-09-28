@@ -1,0 +1,47 @@
+
+  hav@fedora:~/TBT/rainance/stellar latam ideathon 2/micro_lending/microlending-platform$ # Deploy to testnet
+soroban contract deploy \
+  --wasm target/wasm32-unknown-unknown/release/microlending.wasm \
+  --source alice \
+  --network testnet
+ℹ️  Simulating install transaction…
+ℹ️  Signing transaction: bc30bf5093c598f93ae0dd0f1688a579244ed56bcc5206bb9c41aa132c0ed2aa
+🌎 Submitting install transaction…
+ℹ️  Using wasm hash 35708336aa446e3db095dab6b6daed3f0c81cfcf16a1d0d0214fbd6ae09c749d
+ℹ️  Simulating deploy transaction…
+ℹ️  Transaction hash is 936eefb8a20bd3ab24ea9387ae04ce9bf2d096a497b866d8533ca50f8a6d53a0
+🔗 https://stellar.expert/explorer/testnet/tx/936eefb8a20bd3ab24ea9387ae04ce9bf2d096a497b866d8533ca50f8a6d53a0
+ℹ️  Signing transaction: 936eefb8a20bd3ab24ea9387ae04ce9bf2d096a497b866d8533ca50f8a6d53a0
+🌎 Submitting deploy transaction…
+🔗 https://stellar.expert/explorer/testnet/contract/CCFEXUP3A4C26ZXACKYYH525SNRBQLOEB3QXBTNTWNGKCPTW2RTHPLPO
+✅ Deployed!
+CCFEXUP3A4C26ZXACKYYH525SNRBQLOEB3QXBTNTWNGKCPTW2RTHPLPO
+
+
+m$ soroban contract invoke \
+  --id CCFEXUP3A4C26ZXACKYYH525SNRBQLOEB3QXBTNTWNGKCPTW2RTHPLPO \
+  --source alice \
+  --network testnet \
+  -- \
+  initialize \
+  --token CCW67TSZV3SSS2HXMBQ5JFGCKJNXKZM7UQUWUZPUTHXSTZLEO7SJMI75 \
+  --min_loan_amount 1000000 \
+  --max_loan_amount 1000000000 \
+  --platform_fee 100
+
+ℹ️  Signing transaction: 22e43edcab00e089c5b368e8f4d775b7af7c76e27a872547d165e0930c75fdb5
+
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2/micro_lending/microlending-platform$ soroban contract invoke \
+  --id CCFEXUP3A4C26ZXACKYYH525SNRBQLOEB3QXBTNTWNGKCPTW2RTHPLPO \
+  --source alice \
+  --network testnet \
+  -- \
+  request_loan \
+  --borrower $(soroban keys address alice) \
+  --amount 5000000 \
+  --interest_rate 1200 \
+  --duration_days 90 \
+  --purpose education
+ℹ️  Signing transaction: 626ce6503f5b5cc7eb4456b64104d46e3bb51c2201f385ad5471906262471eaa
+1
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2/micro_lending/microlending-platform$ 
