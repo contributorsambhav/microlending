@@ -54,19 +54,18 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       
       if (errorMessage.includes('Freighter wallet extension not found')) {
-        // Trigger the install prompt
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('freighter-install-needed'));
-        }
         toast.error(
           'Freighter wallet not installed. Please install from freighter.app',
           { duration: 6000 }
         );
+        // Open Freighter website in a new tab
+        window.open('https://www.freighter.app/', '_blank');
       } else if (errorMessage.includes('User declined access')) {
-        toast.error('Wallet connection was declined by user');
+        toast.error('Wallet connection was declined. Please try again and approve the connection.');
       } else {
-        toast.error('Failed to connect wallet. Please try again.');
+        toast.error('Failed to connect wallet. Please make sure Freighter is installed and unlocked.');
       }
+      throw error;
     } finally {
       setIsLoading(false);
     }

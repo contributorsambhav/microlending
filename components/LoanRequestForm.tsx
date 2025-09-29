@@ -1,6 +1,6 @@
 'use client';
 
-import { Calendar, DollarSign, FileText, Percent, Send } from 'lucide-react';
+import { Calendar, DollarSign, FileText, Loader2, Percent, Send } from 'lucide-react';
 
 import { stellarService } from '@/lib/stellar';
 import toast from 'react-hot-toast';
@@ -8,7 +8,7 @@ import { useState } from 'react';
 import { useWallet } from '@/context/WalletContext';
 
 export default function LoanRequestForm() {
-  const { publicKey, isConnected } = useWallet();
+  const { publicKey, isConnected, isLoading, connectWallet } = useWallet();
   const [formData, setFormData] = useState({
     amount: '',
     interestRate: '',
@@ -62,8 +62,16 @@ export default function LoanRequestForm() {
     setIsSubmitting(true);
     try {
       const amount = stellarService.parseAmount(formData.amount);
-      const interestRate = Math.floor(parseFloat(formData.interestRate) * 100); // Convert to basis points
+      const interestRate = Math.floor(parseFloat(formData.interestRate) * 100);
       const duration = parseInt(formData.duration);
+
+      console.log('Submitting loan request:', {
+        borrower: publicKey,
+        amount,
+        interestRate,
+        duration,
+        purpose: formData.purpose
+      });
 
       const loanId = await stellarService.requestLoan(
         publicKey,
@@ -84,12 +92,27 @@ export default function LoanRequestForm() {
       });
     } catch (error) {
       console.error('Error creating loan request:', error);
-      toast.error('Failed to create loan request. Please try again.');
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      toast.error(`Failed to create loan request: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  // Show loading state while checking wallet connection
+  if (isLoading) {
+    return (
+      <div className="text-center py-12">
+        <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+        </div>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">Loading...</h3>
+        <p className="text-gray-600">Checking wallet connection</p>
+      </div>
+    );
+  }
+
+  // Show connect wallet prompt if not connected
   if (!isConnected) {
     return (
       <div className="text-center py-12">
@@ -97,7 +120,13 @@ export default function LoanRequestForm() {
           <FileText className="w-8 h-8 text-gray-400" />
         </div>
         <h3 className="text-lg font-medium text-gray-900 mb-2">Connect Your Wallet</h3>
-        <p className="text-gray-600">Connect your Freighter wallet to request a loan.</p>
+        <p className="text-gray-600 mb-4">Connect your Freighter wallet to request a loan.</p>
+        <button
+          onClick={connectWallet}
+          className="btn-primary inline-flex items-center space-x-2"
+        >
+          <span>Connect Wallet</span>
+        </button>
       </div>
     );
   }
@@ -108,6 +137,9 @@ export default function LoanRequestForm() {
         <div className="text-center mb-8">
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Request a Loan</h2>
           <p className="text-gray-600">Fill out the form below to request funding from the community</p>
+          <div className="mt-2 text-sm text-gray-500">
+            Connected: <span className="font-mono text-blue-600">{publicKey?.slice(0, 8)}...{publicKey?.slice(-6)}</span>
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
@@ -225,8 +257,17 @@ export default function LoanRequestForm() {
             disabled={isSubmitting}
             className="btn-primary w-full flex items-center justify-center space-x-2"
           >
-            <Send className="w-4 h-4" />
-            <span>{isSubmitting ? 'Submitting...' : 'Submit Loan Request'}</span>
+            {isSubmitting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Submitting...</span>
+              </>
+            ) : (
+              <>
+                <Send className="w-4 h-4" />
+                <span>Submit Loan Request</span>
+              </>
+            )}
           </button>
         </form>
 

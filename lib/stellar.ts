@@ -10,6 +10,13 @@ import {
   scValToNative,
   xdr
 } from '@stellar/stellar-sdk';
+// Import the official Freighter API
+import {
+  getAddress,
+  isConnected,
+  setAllowed,
+  signTransaction
+} from '@stellar/freighter-api';
 
 export interface LoanRequest {
   borrower: string;
@@ -40,59 +47,43 @@ class StellarService {
   }
 
   async isFreighterConnected(): Promise<boolean> {
-    if (typeof window !== 'undefined') {
-      // Wait a bit for Freighter to load if it's still loading
-      await this.waitForFreighter();
-      if (window.freighterApi) {
-        return await window.freighterApi.isConnected();
-      }
+    try {
+      return await isConnected();
+    } catch (error) {
+      console.error('Error checking Freighter connection:', error);
+      return false;
     }
-    return false;
   }
 
   async connectFreighter(): Promise<string> {
-    if (typeof window !== 'undefined') {
-      // Wait for Freighter to load
-      await this.waitForFreighter();
+    try {
+      // Request access to the wallet
+      await setAllowed();
       
-      if (window.freighterApi) {
-        const publicKey = await window.freighterApi.requestAccess();
-        return publicKey;
+      // Get the public key
+      const result = await getAddress();
+      return result.address;
+    } catch (error) {
+      console.error('Freighter connection error:', error);
+      
+      if (error instanceof Error) {
+        if (error.message.includes('User declined access')) {
+          throw new Error('User declined access');
+        }
       }
+      
+      throw new Error('Freighter wallet extension not found. Please install Freighter from https://freighter.app/');
     }
-    throw new Error('Freighter wallet extension not found. Please install Freighter from https://freighter.app/');
   }
 
   async getPublicKey(): Promise<string> {
-    if (typeof window !== 'undefined') {
-      await this.waitForFreighter();
-      if (window.freighterApi) {
-        return await window.freighterApi.getPublicKey();
-      }
+    try {
+      const result = await getAddress();
+      return result.address;
+    } catch (error) {
+      console.error('Error getting public key:', error);
+      throw new Error('Failed to get public key from Freighter');
     }
-    throw new Error('Freighter wallet not found');
-  }
-
-  private async waitForFreighter(timeout: number = 3000): Promise<void> {
-    return new Promise((resolve) => {
-      if (typeof window !== 'undefined' && window.freighterApi) {
-        resolve();
-        return;
-      }
-
-      const checkInterval = setInterval(() => {
-        if (typeof window !== 'undefined' && window.freighterApi) {
-          clearInterval(checkInterval);
-          resolve();
-        }
-      }, 100);
-
-      // Timeout after specified time
-      setTimeout(() => {
-        clearInterval(checkInterval);
-        resolve();
-      }, timeout);
-    });
   }
 
   private async buildTransaction(operation: xdr.Operation, publicKey: string) {
@@ -121,7 +112,7 @@ class StellarService {
       
       const operation = contract.call(
         'request_loan',
-        nativeToScVal(Address.fromString(borrower)),
+        nativeToScVal(Address.fromString(borrower), { type: 'address' }),
         nativeToScVal(amount, { type: 'i128' }),
         nativeToScVal(interestRate, { type: 'u32' }),
         nativeToScVal(durationDays, { type: 'u32' }),
@@ -131,22 +122,33 @@ class StellarService {
       const transaction = await this.buildTransaction(operation, borrower);
       const preparedTransaction = await this.server.prepareTransaction(transaction);
 
-      if (typeof window !== 'undefined' && window.freighterApi) {
-        const signedXDR = await window.freighterApi.signTransaction(preparedTransaction.toXDR(), {
-          networkPassphrase: this.networkPassphrase,
-        });
+      // Sign with Freighter using the official API
+      const signedXDR = await signTransaction(preparedTransaction.toXDR(), {
+        networkPassphrase: this.networkPassphrase,
+      });
 
-        const signedTransaction = TransactionBuilder.fromXDR(signedXDR, this.networkPassphrase);
-        const result = await this.server.sendTransaction(signedTransaction);
+      const signedTransaction = TransactionBuilder.fromXDR(
+        signedXDR.signedTxXdr,
+        this.networkPassphrase
+      );
+      
+      const result = await this.server.sendTransaction(signedTransaction);
 
-        // Check if the transaction was successful using string comparison
-        if (result.status === 'SUCCESS') {
-          // Wait for the transaction to be confirmed and get the result
-          const txResponse = await this.server.getTransaction(result.hash);
-          if (txResponse.status === 'SUCCESS') {
-            // Parse the result to extract loan ID
-            // This is a simplified approach - you may need to parse XDR for complex return values
-            return 1; // Placeholder - implement proper loan ID extraction from transaction result
+      // Wait for transaction confirmation
+      if (result.status === 'PENDING') {
+        const hash = result.hash;
+        let txResponse = await this.server.getTransaction(hash);
+        
+        // Poll until transaction is confirmed
+        while (txResponse.status === 'NOT_FOUND') {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          txResponse = await this.server.getTransaction(hash);
+        }
+        
+        if (txResponse.status === 'SUCCESS' && txResponse.resultMetaXdr) {
+          const returnValue = txResponse.resultMetaXdr.v3()?.sorobanMeta()?.returnValue();
+          if (returnValue) {
+            return scValToNative(returnValue) as number;
           }
         }
       }
@@ -168,7 +170,7 @@ class StellarService {
       
       const operation = contract.call(
         'contribute_to_loan',
-        nativeToScVal(Address.fromString(lender)),
+        nativeToScVal(Address.fromString(lender), { type: 'address' }),
         nativeToScVal(loanId, { type: 'u32' }),
         nativeToScVal(contributionAmount, { type: 'i128' })
       );
@@ -176,15 +178,27 @@ class StellarService {
       const transaction = await this.buildTransaction(operation, lender);
       const preparedTransaction = await this.server.prepareTransaction(transaction);
 
-      if (typeof window !== 'undefined' && window.freighterApi) {
-        const signedXDR = await window.freighterApi.signTransaction(preparedTransaction.toXDR(), {
-          networkPassphrase: this.networkPassphrase,
-        });
+      const signedXDR = await signTransaction(preparedTransaction.toXDR(), {
+        networkPassphrase: this.networkPassphrase,
+      });
 
-        const signedTransaction = TransactionBuilder.fromXDR(signedXDR, this.networkPassphrase);
-        const result = await this.server.sendTransaction(signedTransaction);
+      const signedTransaction = TransactionBuilder.fromXDR(
+        signedXDR.signedTxXdr,
+        this.networkPassphrase
+      );
+      
+      const result = await this.server.sendTransaction(signedTransaction);
 
-        if (result.status !== 'SUCCESS') {
+      if (result.status === 'PENDING') {
+        const hash = result.hash;
+        let txResponse = await this.server.getTransaction(hash);
+        
+        while (txResponse.status === 'NOT_FOUND') {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          txResponse = await this.server.getTransaction(hash);
+        }
+        
+        if (txResponse.status !== 'SUCCESS') {
           throw new Error('Transaction failed');
         }
       }
@@ -200,22 +214,34 @@ class StellarService {
       
       const operation = contract.call(
         'repay_loan',
-        nativeToScVal(Address.fromString(borrower)),
+        nativeToScVal(Address.fromString(borrower), { type: 'address' }),
         nativeToScVal(loanId, { type: 'u32' })
       );
 
       const transaction = await this.buildTransaction(operation, borrower);
       const preparedTransaction = await this.server.prepareTransaction(transaction);
 
-      if (typeof window !== 'undefined' && window.freighterApi) {
-        const signedXDR = await window.freighterApi.signTransaction(preparedTransaction.toXDR(), {
-          networkPassphrase: this.networkPassphrase,
-        });
+      const signedXDR = await signTransaction(preparedTransaction.toXDR(), {
+        networkPassphrase: this.networkPassphrase,
+      });
 
-        const signedTransaction = TransactionBuilder.fromXDR(signedXDR, this.networkPassphrase);
-        const result = await this.server.sendTransaction(signedTransaction);
+      const signedTransaction = TransactionBuilder.fromXDR(
+        signedXDR.signedTxXdr,
+        this.networkPassphrase
+      );
+      
+      const result = await this.server.sendTransaction(signedTransaction);
 
-        if (result.status !== 'SUCCESS') {
+      if (result.status === 'PENDING') {
+        const hash = result.hash;
+        let txResponse = await this.server.getTransaction(hash);
+        
+        while (txResponse.status === 'NOT_FOUND') {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          txResponse = await this.server.getTransaction(hash);
+        }
+        
+        if (txResponse.status !== 'SUCCESS') {
           throw new Error('Transaction failed');
         }
       }
@@ -234,8 +260,11 @@ class StellarService {
         nativeToScVal(loanId, { type: 'u32' })
       );
 
-      // Use a dummy account for simulation (contract reads don't need a real account)
-      const dummyAccount = new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
+      const dummyAccount = new Account(
+        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        '0'
+      );
+      
       const transaction = new TransactionBuilder(dummyAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -246,15 +275,14 @@ class StellarService {
 
       const result = await this.server.simulateTransaction(transaction);
       
-      // Check simulation result properly
       if ('error' in result && result.error) {
         console.error('Simulation error:', result.error);
         return null;
       }
 
-      // Extract return value from successful simulation
-      if ('returnValue' in result && result.returnValue) {
-        return scValToNative(result.returnValue) as LoanRequest;
+      if ('results' in result && result.results && result.results.length > 0) {
+        const returnValue = result.results[0].retval;
+        return scValToNative(returnValue) as LoanRequest;
       }
       
       return null;
@@ -270,7 +298,11 @@ class StellarService {
       
       const operation = contract.call('get_loan_count');
 
-      const dummyAccount = new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
+      const dummyAccount = new Account(
+        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        '0'
+      );
+      
       const transaction = new TransactionBuilder(dummyAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -286,8 +318,9 @@ class StellarService {
         return 0;
       }
 
-      if ('returnValue' in result && result.returnValue) {
-        return scValToNative(result.returnValue) as number;
+      if ('results' in result && result.results && result.results.length > 0) {
+        const returnValue = result.results[0].retval;
+        return scValToNative(returnValue) as number;
       }
       
       return 0;
@@ -306,7 +339,11 @@ class StellarService {
         nativeToScVal(loanId, { type: 'u32' })
       );
 
-      const dummyAccount = new Account('GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF', '0');
+      const dummyAccount = new Account(
+        'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF',
+        '0'
+      );
+      
       const transaction = new TransactionBuilder(dummyAccount, {
         fee: BASE_FEE,
         networkPassphrase: this.networkPassphrase,
@@ -322,8 +359,9 @@ class StellarService {
         return 0;
       }
 
-      if ('returnValue' in result && result.returnValue) {
-        return scValToNative(result.returnValue) as number;
+      if ('results' in result && result.results && result.results.length > 0) {
+        const returnValue = result.results[0].retval;
+        return scValToNative(returnValue) as number;
       }
       
       return 0;
@@ -335,24 +373,12 @@ class StellarService {
 
   formatAmount(amount: bigint | number): string {
     const numAmount = typeof amount === 'bigint' ? Number(amount) : amount;
-    return (numAmount / 10000000).toFixed(7); // Convert from stroops to XLM (7 decimal places)
+    return (numAmount / 10000000).toFixed(7);
   }
 
   parseAmount(amount: string | number): number {
     const numAmount = typeof amount === 'string' ? parseFloat(amount) : amount;
-    return Math.floor(numAmount * 10000000); // Convert to stroops (XLM has 7 decimal places)
-  }
-}
-
-// Extend Window interface for Freighter
-declare global {
-  interface Window {
-    freighterApi: {
-      isConnected(): Promise<boolean>;
-      requestAccess(): Promise<string>;
-      getPublicKey(): Promise<string>;
-      signTransaction(xdr: string, options: { networkPassphrase: string }): Promise<string>;
-    };
+    return Math.floor(numAmount * 10000000);
   }
 }
 
