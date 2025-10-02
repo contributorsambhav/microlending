@@ -13,7 +13,8 @@ export function Header() {
     try {
       setIsConnecting(true);
       console.log('Attempting to connect wallet...');
-      await connectWallet();
+      const res = await connectWallet();
+      console.log('Connection result:', res);
       console.log('Wallet connected successfully!');
     } catch (error) {
       console.error('Connection failed in Header:', error);

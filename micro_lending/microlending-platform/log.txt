@@ -45,3 +45,43 @@ sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2/micro_lending/microlendin
 ℹ️  Signing transaction: 626ce6503f5b5cc7eb4456b64104d46e3bb51c2201f385ad5471906262471eaa
 1
 sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2/micro_lending/microlending-platform$ 
+
+
+
+
+
+
+USING STELLAR ACCOUNT 
+
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2$ soroban contract invoke \
+  --id CCFEXUP3A4C26ZXACKYYH525SNRBQLOEB3QXBTNTWNGKCPTW2RTHPLPO \
+  --source alice \
+  --network testnet \
+  -- \
+  request_loan \
+  --borrower $(soroban keys address alice) \
+  --amount 5000000 \
+  --interest_rate 1200 \
+  --duration_days 90 \
+  --purpose education
+ℹ️  Signing transaction: 0e959e2fae76294665784e4badba25714c1a6f7cde5ff40b0586a4b67956f987
+9
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2$ export STELLAR_SECRET_KEY=SCHD3YAK3TAGJHHN4657WG3GB367ZXN7DI2XOINZW67U4ROSZHPJ6YTH
+export STELLAR_PUBLIC_KEY=GAR4PW5UL6Z77XBJEY6PPOCZMOYHHS4HAVLTN6AYN5BOJHQ66IWU7WTY
+
+echo $STELLAR_SECRET_KEY
+echo $STELLAR_PUBLIC_KEY
+SCHD3YAK3TAGJHHN4657WG3GB367ZXN7DI2XOINZW67U4ROSZHPJ6YTH
+GAR4PW5UL6Z77XBJEY6PPOCZMOYHHS4HAVLTN6AYN5BOJHQ66IWU7WTY
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2$ soroban contract invoke   --id CCFEXUP3A4C26ZXACKYYH525SNRBQLOEB3QXBTNTWNGKC
+PTW2RTHPLPO   --source $STELLAR_SECRET_KEY   --network testnet   --   request_loan   --borrower $STELLAR_PRIVATE_KEY  --amount 50000
+00   --interest_rate 1200   --duration_days 90   --purpose education
+error: a value is required for '--borrower <Address>' but none was supplied
+
+For more information, try '--help'.
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2$ soroban contract invoke   --id CCFEXUP3A4C26ZXACKYYH525SNRBQLOEB3QXBTNTWNGKCPTW2RTHPLPO   --source $STELLAR_SECRET_KEY   --network testnet   --   request_loan   --borrower $STELLAR_PUBLIC_KEY  --amount 500000
+0   --interest_rate 1200   --duration_days 90   --purpose education
+ℹ️  Signing transaction: 2f26a8940459bbc8050cb336a931b483038ace474a8306650ebe3e51f9fe79e5
+10
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2$ ^C
+sambhav@fedora:~/TBT/rainance/stellar latam ideathon 2$ ^C
